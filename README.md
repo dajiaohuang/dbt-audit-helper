@@ -94,7 +94,7 @@ Note that there are 4 rows with the `modified` status, but `dbt_audit_num_rows_i
 
 ### compare_and_classify_relation_rows ([source](macros/compare_and_classify_relation_rows.sql))
 
-A wrapper to `compare_which_query_columns_differ`, except it takes two [Relations](https://docs.getdbt.com/reference/dbt-classes#relation) (instead of two queries).
+A wrapper to `compare_and_classify_query_results`, except it takes two [Relations](https://docs.getdbt.com/reference/dbt-classes#relation) (instead of two queries).
 
 Each relation must have the same columns with the same names, but they do not have to be in the same order.
 
@@ -520,7 +520,7 @@ The `.print_table()` function is not compatible with dbt Cloud, so an adjustment
 {% endmacro %}
 ```
 
-To run the macro, execute `dbt run-operation print_audit_output()` in the command bar.
+To run the macro, execute `dbt run-operation print_audit_output` in the command bar.
 
 ### Use Output For Custom Singular Test
 
@@ -532,16 +532,19 @@ Users can configure what exactly constitutes a value match or failure. If there 
 
 _Note: this test should only be used on (and will only work on) models that have a primary key that is reliably `unique` and `not_null`. [Generic dbt tests](https://docs.getdbt.com/docs/building-a-dbt-project/tests#generic-tests) should be used to ensure the model being tested meets the requirements of `unique` and `not_null`._
 
+Set `summarize=false` to return row-level boolean flags and the `primary_key` column used by the filters and joins below. The default summary returns counts instead.
+
 To create a test for the `stg_customers` model, create a custom test
-in the `tests` subdirectory of your dbt project that looks like this:
+in the `tests` subdirectory of your dbt project that looks like this. The `ref` resolves to your dev or PR schema; the explicit relation selects the production table (adjust its database and schema for your project).
 
 ```sql
 {{ 
   audit_helper.compare_all_columns(
-    a_relation=ref('stg_customers'), -- in a test, this ref will compile as your dev or PR schema.
-    b_relation=api.Relation.create(database='dbt_db', schema='analytics_prod', identifier='stg_customers'), -- you can explicitly write a relation to select your production schema, or any other db/schema/table you'd like to use for comparison testing.
+    a_relation=ref('stg_customers'),
+    b_relation=api.Relation.create(database='dbt_db', schema='analytics_prod', identifier='stg_customers'),
     exclude_columns=['updated_at'], 
-    primary_key='id'
+    primary_key='id',
+    summarize=false
   ) 
 }}
 where not perfect_match
@@ -560,7 +563,8 @@ If you'd like the test to only fail when there are conflicting values, you could
   audit_helper.compare_all_columns(
     a_relation=ref('stg_customers'), 
     b_relation=api.Relation.create(database='dbt_db', schema='analytics_prod', identifier='stg_customers'),
-    primary_key='id'
+    primary_key='id',
+    summarize=false
   ) 
 }}
 where conflicting_values
@@ -574,10 +578,11 @@ If you want to create test results that include columns from the model itself fo
     a_relation=ref('stg_customers'),
     b_relation=api.Relation.create(database='dbt_db', schema='analytics_prod', identifier='stg_customers'), 
     exclude_columns=['updated_at'], 
-    primary_key='id'
+    primary_key='id',
+    summarize=false
   ) 
 }}
-left join {{ ref('stg_customers') }} using(id)
+left join {{ ref('stg_customers') }} on primary_key = id
 ```
 
 This structure also allows for the test to group or filter by any attribute in the model or in the macro's output as part of the test, for example:
@@ -589,10 +594,11 @@ with base_test_cte as (
       a_relation=ref('stg_customers'),
       b_relation=api.Relation.create(database='dbt_db', schema='analytics_prod', identifier='stg_customers'), 
       exclude_columns=['updated_at'], 
-      primary_key='id'
+      primary_key='id',
+      summarize=false
     ) 
   }}
-  left join {{ ref('stg_customers') }} using(id)
+  left join {{ ref('stg_customers') }} on primary_key = id
   where conflicting_values
 )
 select
